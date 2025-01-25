@@ -1,0 +1,194 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+pip install pyrebase4
+import firebase_admin
+import pyrebase
+from random import randint
+config = {
+  'apiKey': "AIzaSyDHbqUjhbGMbTfqsKDIgoai4gUDOu_IWXM",
+  'authDomain': "energetix-97723.firebaseapp.com",
+  'databaseURL': "https://energetix-97723-default-rtdb.firebaseio.com",
+  'projectId': "energetix-97723",
+  'storageBucket': "energetix-97723.appspot.com",
+  'messagingSenderId': "376228929269",
+  'appId': "1:376228929269:web:f00ab7a166be8fa067afbc",
+  'measurementId': "G-DSL8DNJBML"
+}
+firebase = pyrebase.initialize_app(config)
+db = firebase.database()
+import pandas as pd
+data = db.child("Energy Consumption").get().val()
+df = pd.DataFrame.from_dict(data, orient='index')
+num_values = df.shape[0]
+print("Number of values in the dataset:", num_values)
+import pandas as pd
+# Assuming 'data' is your DataFrame containing the dataset
+# Add a new column with datetime values for each hour
+df['DateTime'] = pd.date_range(start='2024-01-01', periods=len(df), freq='H')
+# Display the DataFrame after removing the column
+print(df.head())
+print("Return first 5 rows.","\n")
+df.tail()
+df.info()
+print(df.describe(), "\n")
+'del df["Start time UTC"]'
+'del df["End time UTC"]'
+'del df["Start time UTC+03:00"]'
+df.rename(columns={"End time UTC+03:00":"DateTime","Electricity consumption in Finland":"Consumption"},inplace=True)
+print(df.head(5))
+dataset = df
+dataset["Month"] = pd.to_datetime(df["DateTime"]).dt.month
+dataset["Year"] = pd.to_datetime(df["DateTime"]).dt.year
+dataset["Date"] = pd.to_datetime(df["DateTime"]).dt.date
+dataset["Time"] = pd.to_datetime(df["DateTime"]).dt.time
+dataset["Week"] = pd.to_datetime(df["DateTime"]).dt.week
+dataset["Day"] = pd.to_datetime(df["DateTime"]).dt.day_name()
+dataset = df.set_index("DateTime")
+dataset.index = pd.to_datetime(dataset.index)
+print("Return last 5 rows.","\n")
+df.tail()
+df.info()
+print(df.describe(), "\n")
+print(df.columns)
+dataset.head()
+newDataSet = dataset.resample("D").mean()
+print("Old Dataset: ", dataset.shape)
+print("New Dataset: ", newDataSet.shape)
+y = newDataSet["Consumption"]
+print(y[0])
+y.shape
+# Normalize data before model fitting
+# it will boost the performance( in neural networks) + transform
+from sklearn.preprocessing import MinMaxScaler
+# scale of the output and input inthe range 0-1 to match the scale of the layer of LSTM
+scaler = MinMaxScaler(feature_range = (0,1))
+# reshape: convert the univariate 1D array into 2D
+y = scaler.fit_transform(np.array(y).reshape(-1,1))
+print("Normalizing data before model fitting")
+print(y[:10])
+training_size = int(len(y)*0.80)
+test_size = len(y)- training_size
+val_size = int(training_size*0.20)
+train_data , test_data , val_data = y[0:training_size-val_size,:] , y[training_size:len(y),:1], y[len(y)-test_size-val_size:len(y)-test_size,:1]
+# building input variable
+def create_dataset(dataset, time_step = 1):
+  dataX, dataY = [] , []
+  for i in range(len(dataset)-time_step-1):
+    a = dataset[i:(i+time_step),0]
+    dataX.append(a)
+    dataY.append(dataset[i + time_step,0])
+  return np.array(dataX), np.array(dataY)
+time_step = 100
+X_train, y_train = create_dataset(train_data, time_step)
+X_test, ytest = create_dataset(test_data, time_step)
+X_val, yval = create_dataset(val_data, time_step)
+X_train = X_train.reshape(X_train.shape[0],X_train.shape[1], 1)
+X_test = X_test.reshape(X_test.shape[0], X_test.shape[1],1)
+X_val = X_val.reshape(X_val.shape[0], X_val.shape[1],1)
+print("X_train shape: ", X_train.shape)
+print("X_test shape: ",X_test.shape)
+print("X_val shape: ",X_val.shape)
+from keras.models import Sequential
+from keras.layers import Dense
+from keras.layers import LSTM
+from keras.layers import Dropout
+
+model = Sequential()
+
+# Adding the first LSTM layer and some Dropout regularisation
+model.add(LSTM(units = 50, return_sequences = True, input_shape = (time_step, 1)))
+model.add(Dropout(0.2))
+
+# Adding a second LSTM layer and some Dropout regularisation
+model.add(LSTM(units = 50, return_sequences = True))
+# model.add(Dropout(0.2))
+
+# # Adding a third LSTM layer and some Dropout regularisation
+model.add(LSTM(units = 50, return_sequences = True))
+# model.add(Dropout(0.2))
+
+# Adding a fourth LSTM layer and some Dropout regularisation
+model.add(LSTM(units = 50))
+# model.add(Dropout(0.2))
+
+# Adding the output layer
+model.add(Dense(units = 1))
+
+# Compiling the RNN
+model.compile(optimizer = 'adam', loss = 'mean_squared_error')
+model.summary()
+history = model.fit(X_train, y_train, validation_data = (X_val,yval), verbose = 1,epochs = 20 ,batch_size = 20)
+import tensorflow as tf
+train_predict=model.predict(X_train)
+test_predict=model.predict(X_test)
+val_predict=model.predict(X_val)
+train_predict=scaler.inverse_transform(train_predict)
+test_predict=scaler.inverse_transform(test_predict)
+val_predict=scaler.inverse_transform(val_predict)
+import math
+from sklearn.metrics import mean_squared_error
+math.sqrt(mean_squared_error(y_train,train_predict))
+
+# Predicting consumption using training data
+train_predictions = model.predict(X_train)
+train_predictions =scaler.inverse_transform(train_predictions)
+
+y_train = y_train.reshape(y_train.shape[0], 1)
+actual = scaler.inverse_transform(y_train)
+train_results = pd.DataFrame()
+
+train_results["Train Predictions"] = train_predictions.tolist()
+train_results["Actuals"] = actual.tolist()
+
+train_results
+val_predictions = model.predict(X_val)
+val_predictions =scaler.inverse_transform(val_predictions)
+
+yval = yval.reshape(yval.shape[0], 1)
+actual_val = scaler.inverse_transform(yval)
+
+val_results = pd.DataFrame()
+val_results["Val Predictions"] = val_predictions.tolist()
+val_results["Actuals_val"] = actual_val.tolist()
+
+val_results
+test_predictions = model.predict(X_test)
+test_predictions =scaler.inverse_transform(test_predictions)
+
+ytest = ytest.reshape(ytest.shape[0], 1)
+actual_test = scaler.inverse_transform(ytest)
+
+test_results = pd.DataFrame()
+test_results["test Predictions"] = test_predictions.tolist()
+test_results["Actuals_test"] = actual_test.tolist()
+
+test_results
+look_back=100 #*****************************************>>>>>100
+fig, ax = plt.subplots(figsize=(20,10))
+trainPredictPlot = np.empty_like(y)
+trainPredictPlot[:, :] = np.nan
+trainPredictPlot[look_back:len(train_predict)+look_back, :] = train_predict
+# shift test predictions for plotting
+testPredictPlot = np.empty_like(y)
+testPredictPlot[:, :] = np.nan
+testPredictPlot[len(train_predict)+(look_back*2)+1+349:len(y)-1, :] = test_predict
+# plot baseline and predictions
+plt.plot(scaler.inverse_transform(y))
+plt.plot(trainPredictPlot)
+plt.plot(testPredictPlot)
+plt.legend(['original data','Optimization','Predicted optimiation'])
+plt.xlabel('Time Steps')
+plt.ylabel('Consumption MWh')
+plt.show()
+ab=trainPredictPlot*1.43/1000
+ac=testPredictPlot*1.43/1000
+aa=scaler.inverse_transform(y)*1.43/1000
+plt.plot(aa)
+plt.plot(ab)
+plt.plot(ac)
+plt.legend(['original data','Optimization','Predicted optimiation'])
+plt.xlabel('Time Steps')
+plt.ylabel('CO2 Emission')
+plt.show()
